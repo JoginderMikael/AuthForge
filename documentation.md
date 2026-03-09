@@ -54,7 +54,7 @@ auth-service
 ├── dto
 │   ├── request
 │   │   ├── LoginRequest
-│   │   ├── RegisterRequest
+│   │   [.mvn](.mvn)├── RegisterRequest
 │   │   └── RefreshTokenRequest
 │   │
 │   └── response
