@@ -8,11 +8,11 @@
 		<version>4.0.3</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>git.jogindermikael</groupId>
-	<artifactId>MK-Auth-Service</artifactId>
+	<groupId>com.authforge</groupId>
+	<artifactId>authforge</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>MK-Auth-Service</name>
-	<description>Authentication System</description>
+	<name>AuthForge</name>
+	<description>Multi-Tenant Identity &amp; Access Management Platform</description>
 	<url/>
 	<licenses>
 		<license/>

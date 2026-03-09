@@ -1,10 +1,10 @@
-package git.jogindermikael.MK_Auth_Service;
+package com.authforge;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class MkAuthServiceApplicationTests {
+class AuthForgeApplicationTests {
 
 	@Test
 	void contextLoads() {

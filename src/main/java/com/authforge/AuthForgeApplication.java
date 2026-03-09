@@ -1,13 +1,13 @@
-package git.jogindermikael.MK_Auth_Service;
+package com.authforge;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MkAuthServiceApplication {
+public class AuthForgeApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(MkAuthServiceApplication.class, args);
+		SpringApplication.run(AuthForgeApplication.class, args);
 	}
 
 }
