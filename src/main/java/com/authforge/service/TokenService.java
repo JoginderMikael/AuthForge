@@ -7,6 +7,7 @@ import com.authforge.repository.RefreshTokenRepository;
 import com.authforge.repository.UserRepository;
 import com.authforge.security.SecurityConstants;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
@@ -27,6 +29,7 @@ public class TokenService {
     }
 
     public RefreshToken createRefreshToken(UUID userId) {
+        log.debug("Creating refresh token for user ID: {}", userId);
         RefreshToken refreshToken = new RefreshToken();
 
         User user = userRepository.findById(userId)
@@ -37,11 +40,13 @@ public class TokenService {
         refreshToken.setToken(UUID.randomUUID().toString());
 
         refreshToken = refreshTokenRepository.save(refreshToken);
+        log.info("Refresh token created for user: {}", user.getEmail());
         return refreshToken;
     }
 
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.getExpiryDate().compareTo(Instant.now()) < 0) {
+            log.warn("Refresh token expired for user: {}", token.getUser().getEmail());
             refreshTokenRepository.delete(token);
             throw new AuthException("Refresh token was expired. Please make a new signin request", HttpStatus.FORBIDDEN);
         }

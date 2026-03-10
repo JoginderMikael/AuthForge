@@ -13,6 +13,7 @@ import com.authforge.repository.RoleRepository;
 import com.authforge.repository.UserRepository;
 import com.authforge.security.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private final AuthenticationManager authenticationManager;
@@ -40,6 +42,7 @@ public class AuthService {
     private final TokenService tokenService;
 
     public TokenResponse authenticateUser(LoginRequest loginRequest) {
+        log.debug("Authenticating user: {}", loginRequest.getEmail());
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
 
@@ -55,6 +58,7 @@ public class AuthService {
 
         RefreshToken refreshToken = tokenService.createRefreshToken(user.getId());
 
+        log.info("User {} authenticated successfully", user.getEmail());
         return TokenResponse.builder()
                 .accessToken(jwt)
                 .refreshToken(refreshToken.getToken())
@@ -66,6 +70,7 @@ public class AuthService {
 
     public AuthResponse registerUser(RegisterRequest registerRequest) {
         if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            log.warn("Registration failed: Email {} is already in use", registerRequest.getEmail());
             throw new AuthException("Email is already in use!", HttpStatus.BAD_REQUEST);
         }
 
@@ -91,8 +96,8 @@ public class AuthService {
             });
         }
 
-        user.setRoles(roles);
         userRepository.save(user);
+        log.info("Successfully registered user: {}", user.getEmail());
 
         return AuthResponse.builder()
                 .message("User registered successfully!")

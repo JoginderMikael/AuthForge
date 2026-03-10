@@ -5,6 +5,7 @@ import com.authforge.entity.Role;
 import com.authforge.entity.User;
 import com.authforge.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
@@ -27,8 +29,12 @@ public class UserService implements UserDetailsService {
     @Override
     @Transactional
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+        log.debug("Loading user by username: {}", email);
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User Not Found with email: " + email));
+                .orElseThrow(() -> {
+                    log.warn("User not found with email: {}", email);
+                    return new UsernameNotFoundException("User Not Found with email: " + email);
+                });
 
         return new org.springframework.security.core.userdetails.User(
                 user.getEmail(),
