@@ -54,6 +54,7 @@ class JwtAuthenticationFilterTest {
 
         when(request.getHeader("Authorization")).thenReturn("Bearer " + jwt);
         when(jwtProvider.getUsernameFromToken(jwt)).thenReturn(username);
+        when(jwtProvider.getClientIdFromToken(jwt)).thenReturn("authforge_test");
         when(userDetailsService.loadUserByUsername(username)).thenReturn(userDetails);
         when(jwtProvider.validateToken(jwt, userDetails)).thenReturn(true);
         when(userDetails.getAuthorities()).thenReturn(null);
@@ -82,6 +83,7 @@ class JwtAuthenticationFilterTest {
 
         when(request.getHeader("Authorization")).thenReturn("Bearer " + jwt);
         when(jwtProvider.getUsernameFromToken(jwt)).thenReturn(username);
+        when(jwtProvider.getClientIdFromToken(jwt)).thenReturn("authforge_test");
         when(userDetailsService.loadUserByUsername(username)).thenReturn(userDetails);
         when(jwtProvider.validateToken(jwt, userDetails)).thenReturn(false);
 

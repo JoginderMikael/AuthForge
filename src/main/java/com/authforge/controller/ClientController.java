@@ -4,17 +4,18 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import com.authforge.entity.Client;
+import com.authforge.dto.request.ClientRegistrationRequest;
+import com.authforge.dto.response.ClientRegistrationResponse;
 import com.authforge.service.ClientService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/clients")
@@ -30,10 +31,10 @@ public class ClientController {
             @ApiResponse(responseCode = "200", description = "Client registered successfully")
     })
     @PostMapping("/register")
-    public ResponseEntity<Client> registerClient(@RequestBody Map<String, String> request) {
-        String name = request.get("name");
-        String redirectUri = request.get("redirectUri");
-        log.info("Registering client application: {}", name);
-        return ResponseEntity.ok(clientService.registerClient(name, redirectUri));
+    public ResponseEntity<ClientRegistrationResponse> registerClient(
+            @RequestHeader("X-AuthForge-Bootstrap-Token") String bootstrapToken,
+            @Valid @RequestBody ClientRegistrationRequest request) {
+        log.info("Registering client application: {}", request.getName());
+        return ResponseEntity.ok(clientService.registerClient(request, bootstrapToken));
     }
 }

@@ -1,18 +1,24 @@
 package com.authforge.service;
 
 import com.authforge.entity.RefreshToken;
+import com.authforge.entity.Client;
 import com.authforge.entity.User;
 import com.authforge.exception.AuthException;
 import com.authforge.repository.RefreshTokenRepository;
+import com.authforge.repository.ClientRepository;
 import com.authforge.repository.UserRepository;
-import com.authforge.security.SecurityConstants;
+import com.authforge.security.TokenHasher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,25 +29,56 @@ public class TokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
+    private final ClientRepository clientRepository;
+    private final TokenHasher tokenHasher;
+
+    @Value("${authforge.refresh-token-ttl}")
+    private Duration refreshTokenTtl;
+
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public Optional<RefreshToken> findByToken(String token) {
-        return refreshTokenRepository.findByToken(token);
+        return refreshTokenRepository.findByTokenHash(tokenHasher.hash(token));
     }
 
-    public RefreshToken createRefreshToken(UUID userId) {
+    @Transactional
+    public IssuedRefreshToken createRefreshToken(UUID userId, UUID clientId) {
         log.debug("Creating refresh token for user ID: {}", userId);
-        RefreshToken refreshToken = new RefreshToken();
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+        Client client = clientRepository.findById(clientId)
+                .filter(Client::isEnabled)
+                .orElseThrow(() -> new AuthException("Client not found or disabled", HttpStatus.NOT_FOUND));
+
+        return issue(user, client);
+    }
+
+    @Transactional(noRollbackFor = AuthException.class)
+    public IssuedRefreshToken rotateRefreshToken(String rawToken) {
+        RefreshToken current = refreshTokenRepository.findForUpdateByTokenHash(tokenHasher.hash(rawToken))
+                .orElseThrow(() -> new AuthException("Refresh token is invalid", HttpStatus.FORBIDDEN));
+
+        verifyExpiration(current);
+        User user = current.getUser();
+        Client client = current.getClient();
+        refreshTokenRepository.delete(current);
+        refreshTokenRepository.flush();
+
+        return issue(user, client);
+    }
+
+    private IssuedRefreshToken issue(User user, Client client) {
+        String rawToken = newTokenValue();
+        RefreshToken refreshToken = new RefreshToken();
 
         refreshToken.setUser(user);
-        refreshToken.setExpiryDate(Instant.now().plusMillis(SecurityConstants.REFRESH_TOKEN_EXPIRATION));
-        refreshToken.setToken(UUID.randomUUID().toString());
+        refreshToken.setClient(client);
+        refreshToken.setExpiryDate(Instant.now().plus(refreshTokenTtl));
+        refreshToken.setTokenHash(tokenHasher.hash(rawToken));
 
         refreshToken = refreshTokenRepository.save(refreshToken);
         log.info("Refresh token created for user: {}", user.getEmail());
-        return refreshToken;
+        return new IssuedRefreshToken(rawToken, refreshToken, user, client);
     }
 
     public RefreshToken verifyExpiration(RefreshToken token) {
@@ -56,6 +93,17 @@ public class TokenService {
 
     @Transactional
     public int deleteByUserId(UUID userId) {
-        return refreshTokenRepository.deleteByUser(userRepository.findById(userId).get());
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException("User not found", HttpStatus.NOT_FOUND));
+        return refreshTokenRepository.deleteByUser(user);
+    }
+
+    private String newTokenValue() {
+        byte[] value = new byte[32];
+        secureRandom.nextBytes(value);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
+    }
+
+    public record IssuedRefreshToken(String value, RefreshToken entity, User user, Client client) {
     }
 }

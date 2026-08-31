@@ -11,12 +11,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +51,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         User user;
         if (userOptional.isPresent()) {
             user = userOptional.get();
+            if (user.getRoles().isEmpty()) {
+                user.setRoles(new HashSet<>(Set.of(defaultUserRole())));
+                userRepository.save(user);
+            }
             updateExistingUser(user, registrationId, providerId);
         } else {
             user = registerNewUser(registrationId, providerId, email, attributes);
@@ -64,10 +69,19 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     private String getEmail(String registrationId, Map<String, Object> attributes) {
-        if ("github".equalsIgnoreCase(registrationId)) {
-            return (String) attributes.get("email");
+        String email = (String) attributes.get("email");
+        if (email == null || email.isBlank()) {
+            throw new OAuth2AuthenticationException(
+                    new OAuth2Error("invalid_user_info"),
+                    "The OAuth2 provider did not return an email address");
         }
-        return (String) attributes.get("email");
+        if ("google".equalsIgnoreCase(registrationId)
+                && !Boolean.TRUE.equals(attributes.get("email_verified"))) {
+            throw new OAuth2AuthenticationException(
+                    new OAuth2Error("unverified_email"),
+                    "The OAuth2 provider email is not verified");
+        }
+        return email;
     }
 
     private String userRequestAttributeName(String registrationId) {
@@ -80,8 +94,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     private User registerNewUser(String registrationId, String providerId, String email, Map<String, Object> attributes) {
         log.info("Registering new OAuth2 user: {}", email);
         
-        Role userRole = roleRepository.findByName("ROLE_USER")
-                .orElseThrow(() -> new RuntimeException("Default Role not found"));
+        Role userRole = defaultUserRole();
 
         User user = User.builder()
                 .email(email)
@@ -89,7 +102,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 .firstName(getFirstName(registrationId, attributes))
                 .lastName(getLastName(registrationId, attributes))
                 .enabled(true)
-                .roles(Set.of(userRole))
+                .roles(new HashSet<>(Set.of(userRole)))
                 .build();
 
         user = userRepository.save(user);
@@ -102,6 +115,12 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         socialAccountRepository.save(socialAccount);
         return user;
+    }
+
+    private Role defaultUserRole() {
+        return roleRepository.findByName("ROLE_USER")
+                .orElseThrow(() -> new OAuth2AuthenticationException(
+                        new OAuth2Error("server_error"), "Default role is not configured"));
     }
 
     private void updateExistingUser(User user, String registrationId, String providerId) {

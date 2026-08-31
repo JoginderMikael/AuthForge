@@ -5,6 +5,7 @@ import com.authforge.dto.request.RefreshTokenRequest;
 import com.authforge.dto.request.RegisterRequest;
 import com.authforge.dto.response.AuthResponse;
 import com.authforge.dto.response.TokenResponse;
+import com.authforge.entity.Client;
 import com.authforge.entity.RefreshToken;
 import com.authforge.entity.Role;
 import com.authforge.entity.User;
@@ -15,6 +16,7 @@ import com.authforge.security.jwt.JwtProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,13 +24,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.Instant;
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,133 +41,125 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Mock
-    private AuthenticationManager authenticationManager;
-
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private RoleRepository roleRepository;
-
-    @Mock
-    private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private JwtProvider jwtProvider;
-
-    @Mock
-    private TokenService tokenService;
+    @Mock AuthenticationManager authenticationManager;
+    @Mock UserRepository userRepository;
+    @Mock RoleRepository roleRepository;
+    @Mock PasswordEncoder passwordEncoder;
+    @Mock JwtProvider jwtProvider;
+    @Mock TokenService tokenService;
+    @Mock ClientService clientService;
+    @Mock LoginProtectionService loginProtectionService;
 
     @InjectMocks
     private AuthService authService;
 
     private User user;
     private Role role;
+    private Client client;
 
     @BeforeEach
     void setUp() {
-        role = new Role();
-        role.setName("ROLE_USER");
+        role = Role.builder().name("ROLE_USER").build();
         role.setId(UUID.randomUUID());
-
+        client = Client.builder().clientId("authforge_test").clientSecret("encoded").name("Test").build();
+        client.setId(UUID.randomUUID());
         user = User.builder()
                 .email("test@example.com")
                 .password("encodedPassword")
-                .roles(Collections.singleton(role))
+                .roles(new HashSet<>(Set.of(role)))
+                .clients(new HashSet<>(Set.of(client)))
                 .build();
         user.setId(UUID.randomUUID());
     }
 
     @Test
     void authenticateUser_Success() {
-        LoginRequest loginRequest = new LoginRequest("test@example.com", "password");
+        LoginRequest request = new LoginRequest("test@example.com", "password", client.getClientId());
         Authentication authentication = mock(Authentication.class);
         UserDetails userDetails = mock(UserDetails.class);
 
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
-                .thenReturn(authentication);
+        when(clientService.requireEnabledClient(client.getClientId())).thenReturn(client);
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(authentication.getPrincipal()).thenReturn(userDetails);
-        when(userDetails.getUsername()).thenReturn("test@example.com");
-        doReturn(Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")))
-                .when(userDetails)
-                .getAuthorities();
-        when(jwtProvider.generateToken(authentication)).thenReturn("jwt-token");
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(userDetails.getUsername()).thenReturn(user.getEmail());
+        doReturn(List.of(new SimpleGrantedAuthority("ROLE_USER"))).when(userDetails).getAuthorities();
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(jwtProvider.generateToken(user.getEmail(), client.getClientId(), List.of("ROLE_USER"))).thenReturn("jwt-token");
+        when(tokenService.createRefreshToken(user.getId(), client.getId()))
+                .thenReturn(new TokenService.IssuedRefreshToken("refresh-token", new RefreshToken(), user, client));
 
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setToken("refresh-token");
-        when(tokenService.createRefreshToken(user.getId())).thenReturn(refreshToken);
+        TokenResponse response = authService.authenticateUser(request);
 
-        TokenResponse response = authService.authenticateUser(loginRequest);
-
-        assertNotNull(response);
         assertEquals("jwt-token", response.getAccessToken());
         assertEquals("refresh-token", response.getRefreshToken());
-        assertEquals(user.getEmail(), response.getEmail());
-        assertTrue(response.getRoles().contains("ROLE_USER"));
+        assertEquals(client.getClientId(), response.getClientId());
+        verify(loginProtectionService).recordSuccess(client.getClientId(), user.getEmail());
     }
 
     @Test
-    void registerUser_Success() {
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setEmail("new@example.com");
-        registerRequest.setPassword("password");
-        registerRequest.setFirstName("John");
-        registerRequest.setLastName("Doe");
-
-        when(userRepository.existsByEmail("new@example.com")).thenReturn(false);
-        when(passwordEncoder.encode("password")).thenReturn("encodedPassword");
+    void registerUser_AssignsDefaultRoleAndClientBeforeSave() {
+        RegisterRequest request = registrationRequest("new@example.com");
+        when(clientService.requireEnabledClient(client.getClientId())).thenReturn(client);
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
+        when(passwordEncoder.encode(request.getPassword())).thenReturn("encodedPassword");
         when(roleRepository.findByName("ROLE_USER")).thenReturn(Optional.of(role));
 
-        AuthResponse response = authService.registerUser(registerRequest);
+        AuthResponse response = authService.registerUser(request);
 
-        assertNotNull(response);
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        User saved = userCaptor.getValue();
         assertTrue(response.isSuccess());
-        assertEquals("User registered successfully!", response.getMessage());
-        verify(userRepository, times(1)).save(any(User.class));
+        assertEquals(Set.of(role), saved.getRoles());
+        assertEquals(Set.of(client), saved.getClients());
+        assertNotEquals(request.getPassword(), saved.getPassword());
     }
 
     @Test
     void registerUser_EmailAlreadyExists_ThrowsException() {
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setEmail("test@example.com");
+        RegisterRequest request = registrationRequest("test@example.com");
+        when(clientService.requireEnabledClient(client.getClientId())).thenReturn(client);
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(true);
 
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        AuthException exception = assertThrows(AuthException.class, () -> authService.registerUser(request));
 
-        AuthException exception = assertThrows(AuthException.class, () -> authService.registerUser(registerRequest));
-        assertEquals("Email is already in use!", exception.getMessage());
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    void refreshToken_Success() {
-        RefreshTokenRequest request = new RefreshTokenRequest("valid-refresh-token");
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setToken("valid-refresh-token");
-        refreshToken.setUser(user);
-        refreshToken.setExpiryDate(Instant.now().plusSeconds(3600));
-
-        when(tokenService.findByToken("valid-refresh-token")).thenReturn(Optional.of(refreshToken));
-        when(tokenService.verifyExpiration(refreshToken)).thenReturn(refreshToken);
-        when(jwtProvider.generateToken(user.getEmail())).thenReturn("new-jwt-token");
+    void refreshToken_RotatesRefreshToken() {
+        RefreshTokenRequest request = new RefreshTokenRequest("old-refresh-token");
+        when(tokenService.rotateRefreshToken("old-refresh-token"))
+                .thenReturn(new TokenService.IssuedRefreshToken("new-refresh-token", new RefreshToken(), user, client));
+        when(jwtProvider.generateToken(user.getEmail(), client.getClientId(), List.of("ROLE_USER")))
+                .thenReturn("new-jwt-token");
 
         TokenResponse response = authService.refreshToken(request);
 
-        assertNotNull(response);
         assertEquals("new-jwt-token", response.getAccessToken());
-        assertEquals("valid-refresh-token", response.getRefreshToken());
-        assertEquals(user.getEmail(), response.getEmail());
+        assertEquals("new-refresh-token", response.getRefreshToken());
+        assertEquals(client.getClientId(), response.getClientId());
     }
 
     @Test
-    void refreshToken_InvalidToken_ThrowsException() {
+    void refreshToken_InvalidToken_PropagatesForbidden() {
         RefreshTokenRequest request = new RefreshTokenRequest("invalid-token");
-
-        when(tokenService.findByToken("invalid-token")).thenReturn(Optional.empty());
+        when(tokenService.rotateRefreshToken("invalid-token"))
+                .thenThrow(new AuthException("Refresh token is invalid", HttpStatus.FORBIDDEN));
 
         AuthException exception = assertThrows(AuthException.class, () -> authService.refreshToken(request));
-        assertEquals("Refresh token is not in database!", exception.getMessage());
+
         assertEquals(HttpStatus.FORBIDDEN, exception.getStatus());
+    }
+
+    private RegisterRequest registrationRequest(String email) {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail(email);
+        request.setPassword("password123");
+        request.setFirstName("John");
+        request.setLastName("Doe");
+        request.setClientId(client.getClientId());
+        return request;
     }
 }

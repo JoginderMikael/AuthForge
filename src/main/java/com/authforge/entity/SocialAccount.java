@@ -3,10 +3,9 @@ package com.authforge.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
-
 @Entity
-@Table(name = "social_accounts")
+@Table(name = "social_accounts", uniqueConstraints =
+        @UniqueConstraint(name = "uk_social_provider_account", columnNames = {"provider", "provider_id"}))
 @Getter
 @Setter
 @NoArgsConstructor

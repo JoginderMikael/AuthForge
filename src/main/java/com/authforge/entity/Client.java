@@ -3,10 +3,8 @@ package com.authforge.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
-
 @Entity
-@Table(name = "clients")
+@Table(name = "clients", indexes = @Index(name = "idx_clients_client_id", columnList = "client_id"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -24,6 +22,10 @@ public class Client extends BaseEntity {
     private String name;
 
     private String redirectUri;
+
+    @Column(nullable = false, length = 1000)
+    @Builder.Default
+    private String scopes = "api.read";
 
     @Builder.Default
     private boolean enabled = true;

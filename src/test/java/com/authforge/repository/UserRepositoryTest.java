@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.persistence.EntityManager;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.Optional;
 
@@ -13,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
+@TestPropertySource(properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false"})
 class UserRepositoryTest {
 
     @Autowired

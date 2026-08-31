@@ -18,7 +18,7 @@ public class OAuth2LoginFailureHandler extends SimpleUrlAuthenticationFailureHan
             throws IOException, ServletException {
         
         String targetUrl = UriComponentsBuilder.fromUriString("/auth/oauth2/callback")
-                .queryParam("error", exception.getLocalizedMessage())
+                .queryParam("error", "oauth2_authentication_failed")
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);

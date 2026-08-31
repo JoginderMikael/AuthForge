@@ -5,6 +5,7 @@ import com.authforge.dto.request.RefreshTokenRequest;
 import com.authforge.dto.request.RegisterRequest;
 import com.authforge.dto.response.AuthResponse;
 import com.authforge.dto.response.TokenResponse;
+import com.authforge.entity.Client;
 import com.authforge.entity.RefreshToken;
 import com.authforge.entity.Role;
 import com.authforge.entity.User;
@@ -23,6 +24,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
@@ -40,35 +42,57 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final TokenService tokenService;
+    private final ClientService clientService;
+    private final LoginProtectionService loginProtectionService;
 
     public TokenResponse authenticateUser(LoginRequest loginRequest) {
         log.debug("Authenticating user: {}", loginRequest.getEmail());
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+        Client client = clientService.requireEnabledClient(loginRequest.getClientId());
+        if (loginProtectionService.isBlocked(client.getClientId(), loginRequest.getEmail())) {
+            throw new AuthException("Account temporarily locked due to failed login attempts", HttpStatus.LOCKED);
+        }
+
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+        } catch (org.springframework.security.core.AuthenticationException exception) {
+            loginProtectionService.recordFailure(client.getClientId(), loginRequest.getEmail());
+            throw exception;
+        }
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtProvider.generateToken(authentication);
 
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        User user = userRepository.findByEmail(userDetails.getUsername()).get();
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new AuthException("Invalid credentials", HttpStatus.UNAUTHORIZED));
+        if (user.getClients().stream().noneMatch(item -> item.getId().equals(client.getId()))) {
+            loginProtectionService.recordFailure(client.getClientId(), loginRequest.getEmail());
+            throw new AuthException("Invalid credentials", HttpStatus.UNAUTHORIZED);
+        }
+        loginProtectionService.recordSuccess(client.getClientId(), loginRequest.getEmail());
         
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toList());
+        String jwt = jwtProvider.generateToken(user.getEmail(), client.getClientId(), roles);
 
-        RefreshToken refreshToken = tokenService.createRefreshToken(user.getId());
+        TokenService.IssuedRefreshToken refreshToken = tokenService.createRefreshToken(user.getId(), client.getId());
 
         log.info("User {} authenticated successfully", user.getEmail());
         return TokenResponse.builder()
                 .accessToken(jwt)
-                .refreshToken(refreshToken.getToken())
+                .refreshToken(refreshToken.value())
                 .id(user.getId())
                 .email(user.getEmail())
+                .clientId(client.getClientId())
                 .roles(roles)
                 .build();
     }
 
+    @Transactional
     public AuthResponse registerUser(RegisterRequest registerRequest) {
+        Client client = clientService.requireEnabledClient(registerRequest.getClientId());
         if (userRepository.existsByEmail(registerRequest.getEmail())) {
             log.warn("Registration failed: Email {} is already in use", registerRequest.getEmail());
             throw new AuthException("Email is already in use!", HttpStatus.BAD_REQUEST);
@@ -81,20 +105,12 @@ public class AuthService {
                 .lastName(registerRequest.getLastName())
                 .build();
 
-        Set<String> strRoles = registerRequest.getRoles();
         Set<Role> roles = new HashSet<>();
-
-        if (strRoles == null || strRoles.isEmpty()) {
-            Role userRole = roleRepository.findByName("ROLE_USER")
-                    .orElseThrow(() -> new AuthException("Error: Role is not found.", HttpStatus.NOT_FOUND));
-            roles.add(userRole);
-        } else {
-            strRoles.forEach(role -> {
-                Role r = roleRepository.findByName(role)
-                        .orElseThrow(() -> new AuthException("Error: Role " + role + " is not found.", HttpStatus.NOT_FOUND));
-                roles.add(r);
-            });
-        }
+        Role userRole = roleRepository.findByName("ROLE_USER")
+                .orElseThrow(() -> new AuthException("Default role is not configured", HttpStatus.INTERNAL_SERVER_ERROR));
+        roles.add(userRole);
+        user.setRoles(roles);
+        user.setClients(new HashSet<>(Set.of(client)));
 
         userRepository.save(user);
         log.info("Successfully registered user: {}", user.getEmail());
@@ -106,24 +122,20 @@ public class AuthService {
     }
 
     public TokenResponse refreshToken(RefreshTokenRequest request) {
-        String requestRefreshToken = request.getRefreshToken();
-
-        return tokenService.findByToken(requestRefreshToken)
-                .map(tokenService::verifyExpiration)
-                .map(RefreshToken::getUser)
-                .map(user -> {
-                    String token = jwtProvider.generateToken(user.getEmail());
-                    List<String> roles = user.getRoles().stream()
-                            .map(Role::getName)
-                            .collect(Collectors.toList());
-                    return TokenResponse.builder()
-                            .accessToken(token)
-                            .refreshToken(requestRefreshToken)
-                            .id(user.getId())
-                            .email(user.getEmail())
-                            .roles(roles)
-                            .build();
-                })
-                .orElseThrow(() -> new AuthException("Refresh token is not in database!", HttpStatus.FORBIDDEN));
+        TokenService.IssuedRefreshToken rotated = tokenService.rotateRefreshToken(request.getRefreshToken());
+        User user = rotated.user();
+        Client client = rotated.client();
+        List<String> roles = user.getRoles().stream()
+                .map(Role::getName)
+                .collect(Collectors.toList());
+        String token = jwtProvider.generateToken(user.getEmail(), client.getClientId(), roles);
+        return TokenResponse.builder()
+                .accessToken(token)
+                .refreshToken(rotated.value())
+                .id(user.getId())
+                .email(user.getEmail())
+                .clientId(client.getClientId())
+                .roles(roles)
+                .build();
     }
 }

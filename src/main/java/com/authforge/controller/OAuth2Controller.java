@@ -1,10 +1,17 @@
 package com.authforge.controller;
 
+import com.authforge.dto.request.OAuth2ExchangeRequest;
+import com.authforge.dto.response.TokenResponse;
+import com.authforge.service.ClientService;
+import com.authforge.service.OAuth2ExchangeCodeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,8 +22,12 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth/oauth2")
 @Slf4j
+@RequiredArgsConstructor
 @Tag(name = "OAuth2", description = "Endpoints for OAuth2 social authentication")
 public class OAuth2Controller {
+
+    private final ClientService clientService;
+    private final OAuth2ExchangeCodeService exchangeCodeService;
 
     @Operation(
         summary = "Initiate OAuth2 Login", 
@@ -26,7 +37,17 @@ public class OAuth2Controller {
         }
     )
     @GetMapping("/authorize/{provider}")
-    public void initiateLogin(@PathVariable String provider, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    public void initiateLogin(
+            @PathVariable String provider,
+            @RequestParam String clientId,
+            jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        clientService.requireEnabledClient(clientId);
+        Cookie clientCookie = new Cookie("AUTHFORGE_OAUTH_CLIENT", clientId);
+        clientCookie.setHttpOnly(true);
+        clientCookie.setPath("/");
+        clientCookie.setMaxAge(300);
+        clientCookie.setAttribute("SameSite", "Lax");
+        response.addCookie(clientCookie);
         response.sendRedirect("/oauth2/authorization/" + provider);
     }
 
@@ -37,7 +58,7 @@ public class OAuth2Controller {
     })
     @GetMapping("/callback")
     public ResponseEntity<Map<String, String>> oauth2Callback(
-            @RequestParam(required = false) String token,
+            @RequestParam(required = false) String code,
             @RequestParam(required = false) String error) {
         
         Map<String, String> response = new HashMap<>();
@@ -48,8 +69,13 @@ public class OAuth2Controller {
         }
         
         log.info("OAuth2 callback successful");
-        response.put("token", token);
-        response.put("message", "Authentication successful. Please use this token for subsequent requests.");
+        response.put("code", code == null ? "" : code);
+        response.put("message", "Authentication successful. Exchange this one-time code with POST /auth/oauth2/exchange.");
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/exchange")
+    public ResponseEntity<TokenResponse> exchange(@Valid @RequestBody OAuth2ExchangeRequest request) {
+        return ResponseEntity.ok(exchangeCodeService.consume(request.getCode()));
     }
 }

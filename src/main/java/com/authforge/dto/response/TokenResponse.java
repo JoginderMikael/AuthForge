@@ -26,6 +26,8 @@ public class TokenResponse {
     private UUID id;
     @Schema(example = "user@example.com")
     private String email;
+    @Schema(example = "authforge_a1b2c3d4")
+    private String clientId;
     @Schema(example = "[\"ROLE_USER\"]")
     private List<String> roles;
 }

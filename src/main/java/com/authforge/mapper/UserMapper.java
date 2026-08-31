@@ -1,6 +1,7 @@
 package com.authforge.mapper;
 
 import com.authforge.dto.response.UserResponse;
+import com.authforge.entity.Client;
 import com.authforge.entity.Role;
 import com.authforge.entity.User;
 import org.mapstruct.Mapper;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 public interface UserMapper {
 
     @Mapping(target = "roles", expression = "java(mapRoles(user.getRoles()))")
+    @Mapping(target = "clients", expression = "java(mapClients(user.getClients()))")
     UserResponse toUserResponse(User user);
 
     default List<String> mapRoles(Set<Role> roles) {
@@ -21,5 +23,12 @@ public interface UserMapper {
         return roles.stream()
                 .map(Role::getName)
                 .collect(Collectors.toList());
+    }
+
+    default List<String> mapClients(Set<Client> clients) {
+        if (clients == null) return List.of();
+        return clients.stream()
+                .map(Client::getClientId)
+                .toList();
     }
 }

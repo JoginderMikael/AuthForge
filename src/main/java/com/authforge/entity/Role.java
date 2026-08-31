@@ -3,6 +3,7 @@ package com.authforge.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.HashSet;
 import java.util.Set;
 
 @Entity
@@ -23,5 +24,6 @@ public class Role extends BaseEntity {
         joinColumns = @JoinColumn(name = "role_id"),
         inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
-    private Set<Permission> permissions;
+    @Builder.Default
+    private Set<Permission> permissions = new HashSet<>();
 }

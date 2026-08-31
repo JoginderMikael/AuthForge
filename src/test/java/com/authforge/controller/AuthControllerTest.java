@@ -6,6 +6,7 @@ import com.authforge.dto.request.RegisterRequest;
 import com.authforge.dto.response.AuthResponse;
 import com.authforge.dto.response.TokenResponse;
 import com.authforge.security.jwt.JwtAuthenticationFilter;
+import com.authforge.security.RateLimitFilter;
 import com.authforge.security.jwt.JwtTokenValidator;
 import com.authforge.service.AuthService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,7 +29,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(value = AuthController.class, excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class))
+@WebMvcTest(value = AuthController.class, excludeFilters = @ComponentScan.Filter(
+        type = FilterType.ASSIGNABLE_TYPE,
+        classes = {JwtAuthenticationFilter.class, RateLimitFilter.class}))
 @AutoConfigureMockMvc(addFilters = false)
 class AuthControllerTest {
 
@@ -45,11 +48,12 @@ class AuthControllerTest {
 
     @Test
     void authenticateUser_Success() throws Exception {
-        LoginRequest loginRequest = new LoginRequest("test@example.com", "password");
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "password", "authforge_test");
         TokenResponse tokenResponse = TokenResponse.builder()
                 .accessToken("access-token")
                 .refreshToken("refresh-token")
                 .email("test@example.com")
+                .clientId("authforge_test")
                 .id(UUID.randomUUID())
                 .roles(Collections.singletonList("ROLE_USER"))
                 .build();
@@ -72,6 +76,7 @@ class AuthControllerTest {
         registerRequest.setPassword("password123");
         registerRequest.setFirstName("John");
         registerRequest.setLastName("Doe");
+        registerRequest.setClientId("authforge_test");
 
         AuthResponse authResponse = AuthResponse.builder()
                 .message("User registered successfully!")

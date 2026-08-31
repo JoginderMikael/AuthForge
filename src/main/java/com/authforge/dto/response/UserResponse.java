@@ -25,6 +25,8 @@ public class UserResponse {
     private String lastName;
     @Schema(example = "[\"ROLE_USER\"]")
     private List<String> roles;
+    @Schema(example = "[\"authforge_a1b2c3d4\"]")
+    private List<String> clients;
     @Schema(example = "true")
     private boolean enabled;
 }

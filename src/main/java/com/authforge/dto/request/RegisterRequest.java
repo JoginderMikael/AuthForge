@@ -8,8 +8,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Set;
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -31,6 +29,7 @@ public class RegisterRequest {
     @Schema(example = "Doe", description = "User's last name")
     private String lastName;
 
-    @Schema(example = "[\"ROLE_USER\"]", description = "Set of roles assigned to the user")
-    private Set<String> roles;
+    @NotBlank
+    @Schema(example = "authforge_a1b2c3d4", description = "Client application / tenant identifier")
+    private String clientId;
 }

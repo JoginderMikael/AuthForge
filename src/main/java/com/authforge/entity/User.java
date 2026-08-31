@@ -3,11 +3,11 @@ package com.authforge.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = @Index(name = "idx_users_email", columnList = "email"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -42,8 +42,19 @@ public class User extends BaseEntity {
         joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
-    private Set<Role> roles;
+    @Builder.Default
+    private Set<Role> roles = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_clients",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "client_id")
+    )
+    @Builder.Default
+    private Set<Client> clients = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<SocialAccount> socialAccounts;
+    @Builder.Default
+    private Set<SocialAccount> socialAccounts = new HashSet<>();
 }

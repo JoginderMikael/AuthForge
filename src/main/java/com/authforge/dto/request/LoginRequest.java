@@ -20,4 +20,8 @@ public class LoginRequest {
     @NotBlank
     @Schema(example = "password123", description = "User's password")
     private String password;
+
+    @NotBlank
+    @Schema(example = "authforge_a1b2c3d4", description = "Client application / tenant identifier")
+    private String clientId;
 }
