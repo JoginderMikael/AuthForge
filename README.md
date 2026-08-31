@@ -56,6 +56,20 @@ Requirements: Docker Engine or Docker Desktop with Compose v2.
 
 Swagger UI is available at <http://localhost:8082/swagger-ui.html>.
 
+### Browser test console
+
+A small React + TypeScript console lives in `frontend/`. It exercises client provisioning, the `client_credentials` grant, user registration and login, refresh-token rotation, JWT validation, and social OAuth code exchange. API responses and decoded JWT payloads are shown alongside each flow.
+
+With the backend running on port `8082`, start the console in a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open <http://localhost:5173>. The development server proxies API requests to the backend, so no CORS changes are needed. To use another backend URL, copy `frontend/.env.example` to `frontend/.env.local` and edit `VITE_AUTHFORGE_API_URL`.
+
 To inspect logs or stop the stack:
 
 ```bash
