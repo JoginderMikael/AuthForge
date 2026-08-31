@@ -24,7 +24,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -82,11 +81,10 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(authentication.getPrincipal()).thenReturn(userDetails);
         when(userDetails.getUsername()).thenReturn(user.getEmail());
-        doReturn(List.of(new SimpleGrantedAuthority("ROLE_USER"))).when(userDetails).getAuthorities();
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
         when(jwtProvider.generateToken(user.getEmail(), client.getClientId(), List.of("ROLE_USER"))).thenReturn("jwt-token");
         when(tokenService.createRefreshToken(user.getId(), client.getId()))
-                .thenReturn(new TokenService.IssuedRefreshToken("refresh-token", new RefreshToken(), user, client));
+                .thenReturn(issuedToken("refresh-token"));
 
         TokenResponse response = authService.authenticateUser(request);
 
@@ -131,7 +129,7 @@ class AuthServiceTest {
     void refreshToken_RotatesRefreshToken() {
         RefreshTokenRequest request = new RefreshTokenRequest("old-refresh-token");
         when(tokenService.rotateRefreshToken("old-refresh-token"))
-                .thenReturn(new TokenService.IssuedRefreshToken("new-refresh-token", new RefreshToken(), user, client));
+                .thenReturn(issuedToken("new-refresh-token"));
         when(jwtProvider.generateToken(user.getEmail(), client.getClientId(), List.of("ROLE_USER")))
                 .thenReturn("new-jwt-token");
 
@@ -161,5 +159,15 @@ class AuthServiceTest {
         request.setLastName("Doe");
         request.setClientId(client.getClientId());
         return request;
+    }
+
+    private TokenService.IssuedRefreshToken issuedToken(String value) {
+        return new TokenService.IssuedRefreshToken(
+                value,
+                new RefreshToken(),
+                user.getId(),
+                user.getEmail(),
+                client.getClientId(),
+                List.of("ROLE_USER"));
     }
 }

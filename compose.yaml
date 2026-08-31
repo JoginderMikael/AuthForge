@@ -1,18 +1,80 @@
+name: authforge
+
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTHFORGE_DATABASE_NAME:?Copy .env.example to .env and configure it}
+      POSTGRES_USER: ${AUTHFORGE_DATABASE_USERNAME:?Copy .env.example to .env and configure it}
+      POSTGRES_PASSWORD: ${AUTHFORGE_DATABASE_PASSWORD:?Copy .env.example to .env and configure it}
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - authforge
+
   redis:
     image: redis:7.4-alpine
-    container_name: AuthForge-redis
     restart: unless-stopped
-    command: [ "redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "warning" ]
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "warning"]
+    expose:
+      - "6379"
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 12
     volumes:
       - redis_data:/data
+    networks:
+      - authforge
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTHFORGE_DATABASE_URL: jdbc:postgresql://postgres:5432/${AUTHFORGE_DATABASE_NAME}
+      AUTHFORGE_DATABASE_USERNAME: ${AUTHFORGE_DATABASE_USERNAME}
+      AUTHFORGE_DATABASE_PASSWORD: ${AUTHFORGE_DATABASE_PASSWORD}
+      AUTHFORGE_REDIS_HOST: redis
+      AUTHFORGE_REDIS_PORT: 6379
+      AUTHFORGE_JWT_SECRET: ${AUTHFORGE_JWT_SECRET:?AUTHFORGE_JWT_SECRET is required}
+      AUTHFORGE_BOOTSTRAP_TOKEN: ${AUTHFORGE_BOOTSTRAP_TOKEN:?AUTHFORGE_BOOTSTRAP_TOKEN is required}
+      AUTHFORGE_JWT_ISSUER: http://localhost:8082
+      AUTHFORGE_OAUTH2_SUCCESS_REDIRECT: http://localhost:8082/auth/oauth2/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-disabled-google-client}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-disabled-google-secret}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-disabled-github-client}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-disabled-github-secret}
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    networks:
+      - authforge
 
 volumes:
+  postgres_data:
   redis_data:
+
+networks:
+  authforge:
+    driver: bridge

@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +65,10 @@ public class TokenService {
         refreshTokenRepository.delete(current);
         refreshTokenRepository.flush();
 
+        if (!client.isEnabled()) {
+            throw new AuthException("Client is disabled", HttpStatus.FORBIDDEN);
+        }
+
         return issue(user, client);
     }
 
@@ -78,7 +83,16 @@ public class TokenService {
 
         refreshToken = refreshTokenRepository.save(refreshToken);
         log.info("Refresh token created for user: {}", user.getEmail());
-        return new IssuedRefreshToken(rawToken, refreshToken, user, client);
+        List<String> roles = user.getRoles().stream()
+                .map(role -> role.getName())
+                .toList();
+        return new IssuedRefreshToken(
+                rawToken,
+                refreshToken,
+                user.getId(),
+                user.getEmail(),
+                client.getClientId(),
+                roles);
     }
 
     public RefreshToken verifyExpiration(RefreshToken token) {
@@ -104,6 +118,12 @@ public class TokenService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
-    public record IssuedRefreshToken(String value, RefreshToken entity, User user, Client client) {
+    public record IssuedRefreshToken(
+            String value,
+            RefreshToken entity,
+            UUID userId,
+            String email,
+            String clientId,
+            List<String> roles) {
     }
 }

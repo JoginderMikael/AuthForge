@@ -19,7 +19,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -72,8 +71,8 @@ public class AuthService {
         }
         loginProtectionService.recordSuccess(client.getClientId(), loginRequest.getEmail());
         
-        List<String> roles = userDetails.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
+        List<String> roles = user.getRoles().stream()
+                .map(Role::getName)
                 .collect(Collectors.toList());
         String jwt = jwtProvider.generateToken(user.getEmail(), client.getClientId(), roles);
 
@@ -123,19 +122,14 @@ public class AuthService {
 
     public TokenResponse refreshToken(RefreshTokenRequest request) {
         TokenService.IssuedRefreshToken rotated = tokenService.rotateRefreshToken(request.getRefreshToken());
-        User user = rotated.user();
-        Client client = rotated.client();
-        List<String> roles = user.getRoles().stream()
-                .map(Role::getName)
-                .collect(Collectors.toList());
-        String token = jwtProvider.generateToken(user.getEmail(), client.getClientId(), roles);
+        String token = jwtProvider.generateToken(rotated.email(), rotated.clientId(), rotated.roles());
         return TokenResponse.builder()
                 .accessToken(token)
                 .refreshToken(rotated.value())
-                .id(user.getId())
-                .email(user.getEmail())
-                .clientId(client.getClientId())
-                .roles(roles)
+                .id(rotated.userId())
+                .email(rotated.email())
+                .clientId(rotated.clientId())
+                .roles(rotated.roles())
                 .build();
     }
 }

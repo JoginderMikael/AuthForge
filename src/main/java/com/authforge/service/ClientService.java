@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashSet;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -40,7 +41,7 @@ public class ClientService {
         Client client = Client.builder()
                 .name(request.getName())
                 .clientId(clientId)
-                .clientSecret("{bcrypt}" + passwordEncoder.encode(rawSecret))
+                .clientSecret(passwordEncoder.encode(rawSecret))
                 .redirectUri(request.getRedirectUri())
                 .scopes(String.join(" ", scopes))
                 .enabled(true)
@@ -66,18 +67,26 @@ public class ClientService {
     }
 
     public Set<String> scopes(Client client) {
-        return normalizeScopes(Set.of(client.getScopes().split("\\s+")));
+        if (client.getScopes() == null || client.getScopes().isBlank()) {
+            return Set.of();
+        }
+        return normalizeScopes(Arrays.stream(client.getScopes().split("\\s+"))
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
     }
 
     private Set<String> normalizeScopes(Set<String> requestedScopes) {
         Set<String> source = requestedScopes == null || requestedScopes.isEmpty()
                 ? Set.of("api.read")
                 : requestedScopes;
-        return source.stream()
+        Set<String> normalized = source.stream()
                 .map(String::trim)
                 .filter(scope -> !scope.isBlank())
                 .filter(scope -> scope.matches("[A-Za-z0-9._:-]+"))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalized.isEmpty()) {
+            throw new AuthException("At least one valid scope is required", HttpStatus.BAD_REQUEST);
+        }
+        return normalized;
     }
 
     private void verifyBootstrapToken(String suppliedToken) {

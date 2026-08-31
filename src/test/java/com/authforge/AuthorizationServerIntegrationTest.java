@@ -39,7 +39,7 @@ class AuthorizationServerIntegrationTest {
     void setUp() {
         client = Client.builder()
                 .clientId("authforge_integration_" + UUID.randomUUID().toString().substring(0, 8))
-                .clientSecret("{bcrypt}" + passwordEncoder.encode("integration-secret"))
+                .clientSecret(passwordEncoder.encode("integration-secret"))
                 .name("Integration client")
                 .scopes("api.read")
                 .enabled(true)

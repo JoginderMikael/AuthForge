@@ -1,104 +1,150 @@
-# AuthForge: Multi-Tenant Identity & Access Management Platform
+# AuthForge
 
-AuthForge is a scalable, developer-friendly Authentication and Authorization service built with Spring Boot. Unlike a simple login system, AuthForge is designed as a standalone identity platform—similar to a lightweight Auth0 or Okta—allowing multiple applications to centralize user management, token issuance, and role-based access control (RBAC).
+AuthForge is a Spring Boot identity and access-management service for multiple client applications. It provides tenant-scoped user authentication, JWT access tokens, rotated refresh tokens, social login, RBAC, and a standards-based OAuth2 `client_credentials` flow.
 
-🚀 **Key Features**
-- **Multi-Application Support**: Register multiple client applications, each with unique `client_id` and `client_secret` credentials.
-- **JWT-Based Authentication**: Stateless authentication using secure JSON Web Tokens with support for Access and Refresh token rotations.
-- **Granular RBAC**: Flexible Role and Permission system (e.g., `ROLE_ADMIN`, `READ_PRODUCTS`) for fine-grained authorization.
-- **Token Validation API**: A dedicated endpoint for resource servers (microservices) to verify token integrity and retrieve user metadata.
-- **Security First**: Built-in BCrypt password hashing, rate limiting to prevent brute-force attacks, and account lockout policies.
-- **OAuth2 Compatibility**: Ready for integration with standard OAuth2 flows like Authorization Code and Client Credentials.
+## What is implemented
 
-🏗️ **System Architecture**
-AuthForge acts as the central hub for all your client applications (Web, Mobile, or APIs).
+- Email/password registration and login using BCrypt.
+- Client applications as tenant boundaries. Users explicitly belong to clients, and user JWTs contain `client_id`, `aud`, and role claims.
+- Spring Authorization Server at `POST /oauth2/token` with the `client_credentials` grant.
+- Google and GitHub login with a short-lived, one-time Redis exchange code. Access and refresh tokens are never placed in redirect URLs.
+- Opaque refresh tokens generated from secure random bytes, stored only as SHA-256 hashes, and rotated on every refresh.
+- Seeded `ROLE_USER`, `ROLE_ADMIN`, and baseline permissions through Flyway.
+- Redis-backed request rate limiting and temporary account lockout after repeated login failures.
+- PostgreSQL persistence, Swagger/OpenAPI, Actuator health checks, JaCoCo, and GitHub Actions CI.
+
+## Architecture
 
 ```text
-App A (React)       App B (Mobile)      App C (Python)
-     |                   |                   |
-     └───────────┬───────┴───────────────────┘
-                 v
-         [ AuthForge Service ]
-      (Spring Boot / Spring Security)
-    ┌──────────────┬──────────────┐
-    | User Service | Token Mgmt   |
-    ├──────────────┼──────────────┤
-    | Client Reg   | RBAC Engine  |
-    └──────────────┴──────────────┘
-                 |
-          [ PostgreSQL DB ]
+Browser / service
+       |
+       v
+AuthForge backend :8082
+  |-- Spring Security + JWT
+  |-- OAuth2 Authorization Server
+  |-- Flyway migrations
+  |-- PostgreSQL :5432   users, clients, roles, tokens, authorizations
+  `-- Redis :6379        rate limits, lockouts, one-time OAuth codes
 ```
 
-🛠️ **Tech Stack**
-- **Backend**: Java 17+, Spring Boot 3.x, Spring Security
-- **Persistence**: Spring Data JPA, PostgreSQL
-- **Security**: JWT (jjwt), BCrypt
-- **Documentation**: SpringDoc OpenAPI (Swagger)
-- **DevOps**: Docker, GitHub Actions (CI/CD)
+The Docker stack runs all three runtime services on a private Compose network. Only the API on port `8082` is exposed to the host; PostgreSQL and Redis stay internal to the stack.
 
-📖 **Developer Integration Guide**
+## Run everything with Docker
 
-### 1. Register Your Application
-Developers must first register their service to receive credentials.
-**Endpoint**: `POST /api/clients/register`
-**JSON Request**:
-```json
-{
-  "name": "My E-commerce App",
-  "redirectUri": "https://myapp.com/callback"
-}
-```
-**Response**:
-```json
-{
-  "clientId": "authforge_abc123",
-  "clientSecret": "sec_789xyz..."
-}
-```
+Requirements: Docker Engine or Docker Desktop with Compose v2.
 
-### 2. Authenticate Users
-Use the global authentication endpoint to log users in.
-**Endpoint**: `POST /auth/login`
-**JSON Request**:
-```json
-{
-  "email": "user@example.com",
-  "password": "securePassword123"
-}
+1. Create the local environment file:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+2. Replace the three placeholder secrets in `.env`. `AUTHFORGE_JWT_SECRET` must be at least 32 bytes. The `.env` file is ignored by both Git and the Docker build context.
+
+3. Build and start the stack:
+
+   ```bash
+   docker compose up --build -d
+   docker compose ps
+   ```
+
+4. Verify the API:
+
+   ```bash
+   curl http://localhost:8082/actuator/health
+   ```
+
+Swagger UI is available at <http://localhost:8082/swagger-ui.html>.
+
+To inspect logs or stop the stack:
+
+```bash
+docker compose logs -f backend
+docker compose down
 ```
 
-### 3. Validate Tokens
-Resource servers can verify the `Authorization: Bearer <JWT>` header via the validation endpoint.
-**Endpoint**: `POST /auth/validate`
+`docker compose down -v` also removes the PostgreSQL and Redis volumes and permanently deletes local development data.
 
-🗄️ **Database Schema**
-The system uses a relational structure to manage the complex mapping between users, roles, and client applications.
+## First API flow
 
-| Table | Description |
-| :--- | :--- |
-| **users** | Core user credentials and status. |
-| **clients** | Registered applications (OAuth2 clients). |
-| **roles** | Defines system roles (User, Admin, etc). |
-| **user_roles** | Mapping table for User-to-Role assignment. |
-| **refresh_tokens** | Tracks active sessions and allows secure rotation. |
+Client creation is protected by the bootstrap token from `.env`. The returned client secret is shown only once.
 
-📂 **Project Structure**
+```bash
+curl -X POST http://localhost:8082/api/clients/register \
+  -H "Content-Type: application/json" \
+  -H "X-AuthForge-Bootstrap-Token: YOUR_BOOTSTRAP_TOKEN" \
+  -d '{"name":"Inventory API","scopes":["api.read","inventory.read"]}'
+```
+
+Use the returned credentials for a machine-to-machine token:
+
+```bash
+curl -u 'CLIENT_ID:CLIENT_SECRET' \
+  -X POST http://localhost:8082/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'grant_type=client_credentials&scope=api.read'
+```
+
+Register a user within that client boundary:
+
+```bash
+curl -X POST http://localhost:8082/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"securePassword123","firstName":"Ada","lastName":"Lovelace","clientId":"CLIENT_ID"}'
+```
+
+Then log in:
+
+```bash
+curl -X POST http://localhost:8082/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"securePassword123","clientId":"CLIENT_ID"}'
+```
+
+Refreshing returns both a new access token and a new refresh token. The submitted refresh token is immediately invalidated:
+
+```bash
+curl -X POST http://localhost:8082/auth/refresh-token \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"REFRESH_TOKEN"}'
+```
+
+## Social login
+
+Set real Google or GitHub credentials in `.env`, including provider callback URLs such as `http://localhost:8082/login/oauth2/code/google`. Start login with a client context:
+
 ```text
-src/main/java/com/authforge/
-├── config/         # Configuration classes (Security, Redis, Swagger)
-├── controller/     # API Endpoints (Auth, Clients, User)
-├── service/        # Business Logic (Token generation, Validation)
-├── security/       # JWT Filters, SecurityConfig, UserDetails
-├── entity/         # JPA Models (User, Client, Role)
-├── repository/     # Data Access Objects
-├── dto/            # Request/Response Data Transfer Objects
-├── mapper/         # Object Mappings
-├── util/           # Utility classes
-└── exception/      # Custom Exception handling
+GET /auth/oauth2/authorize/google?clientId=CLIENT_ID
 ```
 
-🚦 **Getting Started**
-1. **Clone the repo**: `git clone https://github.com/yourusername/authforge.git`
-2. **Configure Database**: Update `application.yml` with your PostgreSQL credentials.
-3. **Run with Maven**: `./mvnw spring-boot:run`
-4. **Explore Documentation**: Access `http://localhost:8080/swagger-ui.html` to see the full API spec.
+On success, AuthForge redirects with a one-time `code`. Exchange it once with:
+
+```http
+POST /auth/oauth2/exchange
+Content-Type: application/json
+
+{"code":"ONE_TIME_CODE"}
+```
+
+The code expires after one minute and its Redis record is deleted atomically when exchanged.
+
+## Local development and tests
+
+The project targets Java 25 and Spring Boot 4.0.3.
+
+```bash
+./mvnw test
+./mvnw spring-boot:run
+```
+
+Tests use an isolated H2 database in PostgreSQL compatibility mode. Runtime configuration comes from environment variables; see `.env.example` and `src/main/resources/application.properties` for the complete list.
+
+Flyway owns the schema and Hibernate runs in validation mode. Do not switch `spring.jpa.hibernate.ddl-auto` back to `update`.
+
+## Production notes
+
+- Keep PostgreSQL and Redis on a private network, as the provided Compose stack does.
+- Supply secrets through your deployment platform, not a committed `.env` file.
+- Persist the authorization-server signing key in a managed keystore before running multiple backend replicas. The development configuration generates an RSA key at startup.
+- Put TLS and a trusted reverse proxy in front of the backend and set `AUTHFORGE_JWT_ISSUER` to its public HTTPS URL.
+- Rotate the bootstrap token after provisioning clients and restrict the client-registration endpoint at the network layer.

@@ -47,7 +47,7 @@ class ClientServiceTest {
 
         ArgumentCaptor<Client> captor = ArgumentCaptor.forClass(Client.class);
         verify(clientRepository).save(captor.capture());
-        assertEquals("{bcrypt}bcrypt-hash", captor.getValue().getClientSecret());
+        assertEquals("bcrypt-hash", captor.getValue().getClientSecret());
         assertNotEquals(response.getClientSecret(), captor.getValue().getClientSecret());
         assertEquals(Set.of("inventory.read", "inventory.write"), response.getScopes());
         assertEquals("/oauth2/token", response.getTokenEndpoint());
