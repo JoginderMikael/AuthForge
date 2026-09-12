@@ -3,6 +3,7 @@
 .idea
 .vscode
 target
+frontend
 *.iml
 *.log
 .env

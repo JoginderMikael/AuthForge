@@ -16,10 +16,12 @@ AuthForge is a Spring Boot identity and access-management service for multiple c
 ## Architecture
 
 ```text
-Browser / service
-       |
-       v
-AuthForge backend :8082
+Browser
+  |-- AuthForge console :5173 (Nginx)
+  |       `-- /api-proxy/*
+  |               |
+  `---------------v
+          AuthForge backend :8082
   |-- Spring Security + JWT
   |-- OAuth2 Authorization Server
   |-- Flyway migrations
@@ -27,7 +29,7 @@ AuthForge backend :8082
   `-- Redis :6379        rate limits, lockouts, one-time OAuth codes
 ```
 
-The Docker stack runs all three runtime services on a private Compose network. Only the API on port `8082` is exposed to the host; PostgreSQL and Redis stay internal to the stack.
+The Docker stack runs all four runtime services on a private Compose network. The console on port `5173` and API on port `8082` are exposed to the host; PostgreSQL and Redis stay internal to the stack.
 
 ## Run everything with Docker
 
@@ -54,26 +56,29 @@ Requirements: Docker Engine or Docker Desktop with Compose v2.
    curl http://localhost:8082/actuator/health
    ```
 
-Swagger UI is available at <http://localhost:8082/swagger-ui.html>.
+Open the test console at <http://localhost:5173>. Swagger UI is available at <http://localhost:8082/swagger-ui.html>.
 
 ### Browser test console
 
-A small React + TypeScript console lives in `frontend/`. It exercises client provisioning, the `client_credentials` grant, user registration and login, refresh-token rotation, JWT validation, and social OAuth code exchange. API responses and decoded JWT payloads are shown alongside each flow.
+A small React + TypeScript console lives in `frontend/`. It exercises client provisioning, the `client_credentials` grant, user registration and login, refresh-token rotation, JWT validation, and social OAuth code exchange. API responses and decoded JWT payloads are shown alongside each flow. It is included in the Compose stack and proxies requests to the backend over the private Docker network, so no CORS changes are needed.
 
-With the backend running on port `8082`, start the console in a second terminal:
+For frontend development with hot reload, start only the supporting stack and run Vite locally:
 
 ```bash
+docker compose up --build -d postgres redis backend
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Open <http://localhost:5173>. The development server proxies API requests to the backend, so no CORS changes are needed. To use another backend URL, copy `frontend/.env.example` to `frontend/.env.local` and edit `VITE_AUTHFORGE_API_URL`.
+Open <http://localhost:5173>. To use another backend URL in development, copy `frontend/.env.example` to `frontend/.env.local` and edit `VITE_AUTHFORGE_API_URL`.
+
+The frontend image separates dependency installation from source compilation and uses a BuildKit npm cache, so unchanged dependencies are reused across builds. At runtime, Nginx gives Vite's fingerprinted assets a one-year immutable cache lifetime while preventing caching of the HTML entry point and API responses. This lets browsers retain safe static assets without serving stale deployments or authentication data.
 
 To inspect logs or stop the stack:
 
 ```bash
-docker compose logs -f backend
+docker compose logs -f backend frontend
 docker compose down
 ```
 
