@@ -12,23 +12,23 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class SwaggerConfig {
 
-    @Bean
-    public OpenAPI authForgeOpenAPI() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("AuthForge API")
-                        .description("Multi-Tenant Identity & Access Management Platform Documentation")
-                        .version("v0.0.1")
-                        .license(new License().name("Apache 2.0").url("http://springdoc.org")))
-                .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
-                .components(new Components()
-                        .addSecuritySchemes("Bearer Authentication", createAPIKeyScheme()));
-    }
+        @Bean
+        public OpenAPI authForgeOpenAPI() {
+                return new OpenAPI()
+                                .info(new Info()
+                                                .title("AuthForge API")
+                                                .description("Multi-Tenant Identity & Access Management Platform Documentation")
+                                                .version("v0.0.1")
+                                                .license(new License().name("Apache 2.0").url("http://springdoc.org")))
+                                .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
+                                .components(new Components()
+                                                .addSecuritySchemes("Bearer Authentication", createAPIKeyScheme()));
+        }
 
-    private SecurityScheme createAPIKeyScheme() {
-        return new SecurityScheme()
-                .type(SecurityScheme.Type.HTTP)
-                .bearerFormat("JWT")
-                .scheme("bearer");
-    }
+        private SecurityScheme createAPIKeyScheme() {
+                return new SecurityScheme()
+                                .type(SecurityScheme.Type.HTTP)
+                                .bearerFormat("JWT")
+                                .scheme("bearer");
+        }
 }

@@ -13,7 +13,10 @@ async function readResponse(response: Response): Promise<unknown> {
   }
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
+export async function request<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<ApiResult<T>> {
   const startedAt = performance.now();
 
   try {
@@ -29,7 +32,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<ApiR
   } catch (error) {
     return {
       data: {
-        message: error instanceof Error ? error.message : "The backend could not be reached",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The backend could not be reached",
         success: false,
       } as T,
       status: 0,
@@ -39,7 +45,11 @@ export async function request<T>(path: string, init?: RequestInit): Promise<ApiR
   }
 }
 
-export function jsonRequest(method: string, body: unknown, headers?: HeadersInit): RequestInit {
+export function jsonRequest(
+  method: string,
+  body: unknown,
+  headers?: HeadersInit,
+): RequestInit {
   return {
     method,
     headers: {
@@ -72,8 +82,13 @@ export function decodeJwt(token: string): Record<string, unknown> | null {
     if (!payload) return null;
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+    const bytes = Uint8Array.from(atob(padded), (character) =>
+      character.charCodeAt(0),
+    );
+    return JSON.parse(new TextDecoder().decode(bytes)) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return null;
   }

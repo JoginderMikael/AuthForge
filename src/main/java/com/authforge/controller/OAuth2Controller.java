@@ -29,13 +29,9 @@ public class OAuth2Controller {
     private final ClientService clientService;
     private final OAuth2ExchangeCodeService exchangeCodeService;
 
-    @Operation(
-        summary = "Initiate OAuth2 Login", 
-        description = "Redirects to the social provider login page. The endpoint is managed by Spring Security.",
-        parameters = {
+    @Operation(summary = "Initiate OAuth2 Login", description = "Redirects to the social provider login page. The endpoint is managed by Spring Security.", parameters = {
             @Parameter(name = "provider", description = "OAuth2 provider ID (e.g., google, github)", required = true, example = "google")
-        }
-    )
+    })
     @GetMapping("/authorize/{provider}")
     public void initiateLogin(
             @PathVariable String provider,
@@ -60,17 +56,18 @@ public class OAuth2Controller {
     public ResponseEntity<Map<String, String>> oauth2Callback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String error) {
-        
+
         Map<String, String> response = new HashMap<>();
         if (error != null) {
             log.error("OAuth2 callback error: {}", error);
             response.put("error", error);
             return ResponseEntity.status(401).body(response);
         }
-        
+
         log.info("OAuth2 callback successful");
         response.put("code", code == null ? "" : code);
-        response.put("message", "Authentication successful. Exchange this one-time code with POST /auth/oauth2/exchange.");
+        response.put("message",
+                "Authentication successful. Exchange this one-time code with POST /auth/oauth2/exchange.");
         return ResponseEntity.ok(response);
     }
 
